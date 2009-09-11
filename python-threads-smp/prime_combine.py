@@ -4,7 +4,11 @@ import sys
 import os
 import math
 import thread
-import multiprocessing
+try :
+    import multiprocessing
+except :
+    print "multprocessing module not found !!"
+
 import string
 import time
 
@@ -475,12 +479,11 @@ def time_routine_header() :
 def time_routine(desc, args) :
 
     (limit, nthreads, repeat) = args
-    s = "%s(%s, %s) " % (desc, limit, nthreads)
 
-    i = "from __main__ import %s" % (desc)
+    cmd   = "%s(%s, %s) " % (desc, limit, nthreads)
+    setup = "from __main__ import %s" % desc 
+    t     = Timer(cmd, setup)
 
-    t = Timer(s, i)
-    
     return (desc, nthreads, repeat, limit, t.timeit(int(repeat)))
 
 
