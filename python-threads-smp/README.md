@@ -25,7 +25,9 @@ The basic implementation can be found in chapter five of [this tutorial (pdf)](h
 #### names of the routines
  
   * orig
-  * thread
+  * nolocks
+  * nolocks_alt
+  * nolocks_alt2
   * smp
   * smp_shared
   * smp_shared_2
