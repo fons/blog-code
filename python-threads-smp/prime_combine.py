@@ -42,39 +42,32 @@ def count_primes(prime) :
     return p
 
 def dowork_orig(tn): # thread number tn
-    global n,prime_global,nexti_global,nextilock,nstarted,nstartedlock,donelock, work
+    global n,prime_global,nexti_global,nextilock,nstarted,nstartedlock,donelock
     donelock[tn].acquire()
     nstartedlock.acquire()
     nstarted += 1
     nstartedlock.release()
     lim = math.sqrt(n)
-    ops = 0 #added
-    nk = 0
+
     while 1:
         nextilock.acquire()
         k = nexti_global
         nexti_global += 1
         nextilock.release()
         if k > lim: break
-        #print k
-        nk += 1
         if prime_global[k]:
             r = n / k
             for i in range(2,r+1):
-                #print k, i, k*i
-                ops += 1 #added
                 prime_global[i*k] = 0
-    work[tn] = nk            
-    #print 'thread', tn, ' processed', nk, 'values of k; ops ', ops    
+
     donelock[tn].release()
 
 def main_orig(top, nthreads):
-    global n,prime_global,nexti_global,nextilock,nstarted,nstartedlock,donelock, work
+    global n,prime_global,nexti_global,nextilock,nstarted,nstartedlock,donelock
 
     n        = int(top)
     nthreads  = int(nthreads)
     prime_global = (n+1) * [1]
-    work  = nthreads * [-99]
 
     nstarted = 0
     nexti_global = 2
