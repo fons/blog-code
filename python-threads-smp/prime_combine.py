@@ -372,9 +372,6 @@ def main_smp_alt(top, nthreads) :
     n             = int(top)
     nthreads      = int(nthreads)
 
-    prime_smp_alt = (n + 1) * [1]
-
-    
     ind   = range(2, n, 1)
     B     = load_balance(ind, nthreads)
     p     = multiprocessing.Pool(nthreads)
@@ -446,7 +443,7 @@ def main_smp_shared(top, nthreads) :
     p       = multiprocessing.Pool(nthreads)
     L_m     = manager.list(prime_s)
     K       = p.map(dowork_smp_shared, map(lambda lst : (n, lst, L_m), B))
-
+    
     return count_primes(L_m)    
 
 def dowork_smp_shared(args) :
