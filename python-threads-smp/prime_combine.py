@@ -16,14 +16,6 @@ from timeit import Timer
 
 import dyn_options
 
-
-""""
-
-Original version, lifted from ....
-Notice that all threads share nexti and prime..
-
-"""
-
 def help() :
     print """
     This program is used to time various threading/multi processing
@@ -41,27 +33,11 @@ def count_primes(prime) :
     p = reduce(lambda x, y: x + y, prime) - 2 
     return p
 
-def dowork_orig(tn): # thread number tn
-    global n,prime_global,nexti_global,nextilock,nstarted,nstartedlock,donelock
-    donelock[tn].acquire()
-    nstartedlock.acquire()
-    nstarted += 1
-    nstartedlock.release()
-    lim = math.sqrt(n)
+""""
+Original version, lifted from ....
+Notice that all threads share nexti and prime..
 
-    while 1:
-        nextilock.acquire()
-        k = nexti_global
-        nexti_global += 1
-        nextilock.release()
-        if k > lim: break
-        if prime_global[k]:
-            r = n / k
-            for i in range(2,r+1):
-                prime_global[i*k] = 0
-
-    donelock[tn].release()
-
+"""
 def main_orig(top, nthreads):
     global n,prime_global,nexti_global,nextilock,nstarted,nstartedlock,donelock
 
@@ -85,15 +61,57 @@ def main_orig(top, nthreads):
 
     return count_primes(prime_global)    
 
+def dowork_orig(tn): # thread number tn
+    global n,prime_global,nexti_global,nextilock,nstarted,nstartedlock,donelock
+    donelock[tn].acquire()
+    nstartedlock.acquire()
+    nstarted += 1
+    nstartedlock.release()
+    lim = math.sqrt(n)
+
+    while 1:
+        nextilock.acquire()
+        k = nexti_global
+        nexti_global += 1
+        nextilock.release()
+        if k > lim: break
+        if prime_global[k]:
+            r = n / k
+            for i in range(2,r+1):
+                prime_global[i*k] = 0
+
+    donelock[tn].release()
+
+
 """
 Remove shared variable nexti_global; a little faster !
-Uses naiave load balancing which works because prime 
+Uses naive load balancing which works because prime 
 is shared..
 """
 
+def main_nolocks(top, nthreads) :
+    global prime_nl
+    n             = int(top)
+    nthreads      = int(nthreads)
+    
+    prime_nl      = (n + 1)  * [1]
+    donelock      = map(lambda l : l.acquire() and l, 
+                        map(lambda i : thread.allocate_lock(), range(nthreads)))
+
+    lim   = int(math.sqrt(n)) + 1
+    nexti_ns = range(2, lim, 1) 
+
+    B = load_balance(nexti_ns, nthreads)
+
+    map(lambda i : start_th(dowork_th, (i, donelock[i], n, B[i])),
+        range(nthreads))
+    
+    map(lambda i : donelock[i].acquire(), range(nthreads) )
+
+    return count_primes(prime_nl)    
+
 def dowork2(n, nexti_ns, prime_nl) :
-    #ops   = 0
-    step  = -1
+
     k     = nexti_ns[0]
     lim   = nexti_ns[1]
     if nexti_ns[0] > nexti_ns[1] : 
@@ -106,12 +124,11 @@ def dowork2(n, nexti_ns, prime_nl) :
         if prime_nl[k] == 1 :
             r = n / k
             for i in range(2, r+1) :
-                #ops += 1
                 prime_nl[i*k] = 0
 
         k   = k + 1
 
-    #print "operations", ops
+
     return prime_nl
 
 
@@ -141,65 +158,10 @@ def load_balance(s, th) :
 def start_th(fn, args) :
     return  thread.start_new_thread(fn, args)
 
-def main_nolocks(top, nthreads) :
-    global prime_nl
-    n             = int(top)
-    nthreads      = int(nthreads)
-    
-    prime_nl      = (n + 1)  * [1]
-    donelock      = map(lambda l : l.acquire() and l, 
-                        map(lambda i : thread.allocate_lock(), range(nthreads)))
-
-    lim   = int(math.sqrt(n)) + 1
-    nexti_ns = range(2, lim, 1) 
-
-    B = load_balance(nexti_ns, nthreads)
-
-    map(lambda i : start_th(dowork_th, (i, donelock[i], n, B[i])),
-        range(nthreads))
-    
-    map(lambda i : donelock[i].acquire(), range(nthreads) )
-
-    return count_primes(prime_nl)    
 
 """
-Splitting up the array between threads
+Splitting up the seive array between threads
 """
-
-def dowork3(n, irange, prime_nla) :
-    #ops   = 0
-    k     = 2
-    lim   = int(math.sqrt(n)) + 1
-    istart, iend = irange
-    #print "istart :", istart, "iend :", iend
-    while 1 :
-
-        if not (k < lim)  : break
-        if not (k < iend) : break
-
-        if k < istart :
-            s = (istart / k ) + 1
-            r = (iend / k) + 1 
-            for i in range(s, r) :
-                #ops += 1
-                prime_nla[i*k] = 0
-        elif prime_nla[k] == 1 :
-            assert k >= istart and k <= iend
-            s = 2
-            r = (iend / k) + 1
-            for i in range(s, r) :
-                #ops += 1
-                prime_nla[i*k] = 0
-
-        k   = k + 1
-    #print "operations : ", ops
-    return prime_nla #L
-
-def dowork_th3(tn, donelock, n, rangei) :
-    global prime_nla
-    prime_nla = dowork3(n, rangei, prime_nla)
-    donelock.release()
-
 def main_nolocks_alt(top, nthreads) :
     global prime_nla
     n             = int(top)
@@ -211,6 +173,7 @@ def main_nolocks_alt(top, nthreads) :
 
     ind   = range(2, n, 1)
     B = load_balance(ind, nthreads)
+    print B
     map(lambda i : start_th(dowork_th3, (i, donelock[i], n, B[i])),
         range(nthreads))
     
@@ -218,9 +181,64 @@ def main_nolocks_alt(top, nthreads) :
         
     return count_primes(prime_nla)    
 
+def dowork3(n, irange, prime_nla) :
+    ops   = 0
+    lim   = int(math.sqrt(n)) + 1
+    istart, iend = irange
+    k     = istart
+    while 1 :
+
+        if not (k < lim)  : break
+        if not (k < iend) : break
+
+        if k < istart :
+            s = (istart / k ) + 1
+            r = (iend / k) + 1 
+            for i in range(s, r) :
+                ops += 1
+                prime_nla[i*k] = 0
+        elif prime_nla[k] == 1 :
+            assert k >= istart and k <= iend
+            s = 2
+            r = (iend / k) + 1
+            for i in range(s, r) :
+                ops += 1
+                prime_nla[i*k] = 0
+
+        k   = k + 1
+    print "istart : ", istart, " iend: ", iend, "operations : ", ops
+    return prime_nla 
+
+def dowork_th3(tn, donelock, n, rangei) :
+    global prime_nla
+    prime_nla = dowork3(n, rangei, prime_nla)
+    donelock.release()
+
+
 """
-Load balance the indices..
+Load balance the indices. A more equitable work distribution
+
 """
+def main_nolocks_alt2(top, nthreads) :
+    global prime_nls4
+    n             = int(top)
+    nthreads      = int(nthreads)
+
+    prime_nls4    = (n + 1)  * [1]
+
+    donelock      = map(lambda l : l.acquire() and l, 
+                        map(lambda i : thread.allocate_lock(), range(nthreads)))
+
+    #print nexti
+
+    B = smp_load_balance(nthreads, n)
+    #print B
+    map(lambda i : start_th(dowork_th4, (i, donelock[i], n, B[i])),
+        range(nthreads))
+    
+    map(lambda i : donelock[i].acquire(), range(nthreads) )
+        
+    return count_primes(prime_nls4)    
 
 def dowork4(n, next_arr, prime_nls4) :
 
@@ -243,26 +261,6 @@ def dowork_th4(tn, donelock, n, nexti) :
     prime = dowork4(n, nexti, prime_nls4)
     donelock.release()
 
-def main_nolocks_alt2(top, nthreads) :
-    global prime_nls4
-    n             = int(top)
-    nthreads      = int(nthreads)
-
-    prime_nls4    = (n + 1)  * [1]
-
-    donelock      = map(lambda l : l.acquire() and l, 
-                        map(lambda i : thread.allocate_lock(), range(nthreads)))
-
-    #print nexti
-
-    B = smp_load_balance(nthreads, n)
-    #print B
-    map(lambda i : start_th(dowork_th4, (i, donelock[i], n, B[i])),
-        range(nthreads))
-    
-    map(lambda i : donelock[i].acquire(), range(nthreads) )
-        
-    return count_primes(prime_nls4)    
 
 
 """
@@ -271,6 +269,18 @@ Load balancing tries to keep the number of operations
 per process constant
 
 """
+def main_smp(top, nthreads) :
+
+    n             = int(top)
+    nthreads      = int(nthreads)
+
+    B     = smp_load_balance(nthreads, n)
+    p     = multiprocessing.Pool(nthreads)
+    K     = p.map(dowork_smp, map(lambda lst : (n, lst, nthreads), B))
+    PR    = transpose(K)
+
+    prime = p.map(reduce_chunk, PR)
+    return count_primes(prime)    
 
 def dowork_smp(args) :
     n, nexti_smp, chunks = args
@@ -289,9 +299,6 @@ def dowork_smp(args) :
                 L[i*k] = 0
         nk += 1
         if nk >= lim : break
-
-    #print 'thread exiting;', 'processed ', nk, 'values of k, ops', ops
-    
 
     len_L = n + 1
     split = len_L / chunks
@@ -338,7 +345,6 @@ def smp_load_balance(th , n) :
         lst.append(index)
         thr_allocs[mindex] = (cnt, lst)
 
-    #print thr_allocs    
     return map(lambda p: p[1], thr_allocs)
 
 def list_reduce(l1, l2) :
@@ -356,28 +362,92 @@ def transpose(K) :
     PR = [ [ K[p[0]][p[1]] for p in S[s]] for s in range(0, chunks) ]
     return PR
 
-def main_smp(top, nthreads) :
+
+"""
+altermative distribution of work: Split the sieve between the processes
+
+"""
+def main_smp_alt(top, nthreads) :
 
     n             = int(top)
     nthreads      = int(nthreads)
 
-    prime         = (n + 1) * [1]
+    prime_smp_alt = (n + 1) * [1]
 
     
-    B     = smp_load_balance(nthreads, n)
-    p     = multiprocessing.Pool(16*nthreads)
-    K     = p.map(dowork_smp, map(lambda lst : (n, lst, 16*nthreads), B))
-    PR    = transpose(K)
-    prime = p.map(reduce_chunk, PR)
+    ind   = range(2, n, 1)
+    B     = load_balance(ind, nthreads)
+    p     = multiprocessing.Pool(nthreads)
+    K     = p.map(dowork_smp_alt, map(lambda lst : (n, lst), B))
 
+    prime_smp_alt = reduce(lambda l,r : l + r, K)
+    return count_primes(prime_smp_alt)
 
-    return count_primes(prime)    
+def dowork_smp_alt(args) :
+    n, irange    = args
+    k            = 2
+    lim          = int(math.sqrt(n)) + 1
+    istart, iend = irange
+    L            = ( n + 1) * [1]
+    ifrom        = 999999
+    ito          = -1
+
+    while 1 :
+
+        if not (k < lim)  : break
+        if not (k < iend) : break
+
+        if k < istart :
+            s = (istart / k ) + 1
+            r = (iend / k) + 1 
+            for i in range(s, r) :
+                index = i * k
+
+                if ifrom > index :
+                    ifrom = index
+                if ito < index :
+                    ito = index
+
+                L[i*k] = 0
+        elif L[k] == 1 :
+            s = 2
+            r = (iend / k) + 1
+            for i in range(s, r) :
+
+                index = i * k
+
+                if ifrom > index :
+                    ifrom = index
+                if ito < index :
+                    ito = index
+
+                L[i*k] = 0
+
+        k   = k + 1
+
+    if ifrom == 4 :
+        ifrom = 0
+
+    return L[ifrom: ito + 1] 
 
 
 """
 Introduce shared variable in the smp module...
 
 """
+def main_smp_shared(top, nthreads) :
+
+    n             = int(top)
+    nthreads      = int(nthreads)
+
+    manager = multiprocessing.Manager()
+    prime_s = (n + 1) * [1] 
+    B       = smp_load_balance(nthreads, n)
+    p       = multiprocessing.Pool(nthreads)
+    L_m     = manager.list(prime_s)
+    K       = p.map(dowork_smp_shared, map(lambda lst : (n, lst, L_m), B))
+
+    return count_primes(L_m)    
 
 def dowork_smp_shared(args) :
     n, nexti_shared, L = args
@@ -399,28 +469,29 @@ def dowork_smp_shared(args) :
     return []
 
 
-def main_smp_shared(top, nthreads) :
-
-    n             = int(top)
-    nthreads      = int(nthreads)
-
-    manager = multiprocessing.Manager()
-
-    L_m     = manager.list((n+1) * [1])
-    B       = smp_load_balance(nthreads, n)
-    p       = multiprocessing.Pool(nthreads)
-
-    K       = p.map(dowork_smp_shared, map(lambda lst : (n, lst, L_m), B))
-    PR      = transpose(K)
-    prime   = p.map(reduce_chunk, PR)
-
-
-    return count_primes(L_m)    
 
 """
 Uses processes, and shared data...
 
 """
+
+def main_smp_shared_2(top, nthreads) :
+    n             = int(top)
+    nthreads      = int(nthreads)
+
+    prime         = (n + 1) * [1]
+
+    B     = smp_load_balance(nthreads, n)
+
+    arr   = multiprocessing.Array('i',prime)
+
+    procs = map(create_process, map(lambda lst : (n, lst, arr), B))    
+    map(lambda p : p.start(), procs)
+    map(lambda p : p.join(), procs)
+
+    prime = arr[:]
+    
+    return count_primes(prime)
 
 def create_process(argv) :
     return multiprocessing.Process(target=dowork_smp_shared_2, args=(argv,))
@@ -443,26 +514,8 @@ def dowork_smp_shared_2(args) :
         nk += 1
         if nk >= lim : break
 
-    #print 'thread exiting;', 'processed ', nk, 'values of k, ops', ops
-    
     return L
 
-
-def main_smp_shared_2(top, nthreads) :
-    n             = int(top)
-    nthreads      = int(nthreads)
-
-    prime         = (n + 1) * [1]
-
-    B     = smp_load_balance(nthreads, n)
-    arr   = multiprocessing.Array('i',prime)
-    
-    procs = map(create_process, map(lambda lst : (n, lst, arr), B))
-    map(lambda p : p.start(), procs)
-    map(lambda p : p.join(), procs)
-    prime = arr[:]
-    
-    return count_primes(prime)
     
     
 "------------------------------------------------"
@@ -520,6 +573,16 @@ def close_file(option_flg, f) :
     return f
 
 def timing_test(option) :
+
+    def get_range(fr, to) :
+        if fr < to :
+            to += 1
+            return range(fr, to)
+        if fr > to :
+            to -= 1
+            return range(fr, to, -1)
+        return range(fr, to)
+
     tag      = name_tag()
     
     if option.clobber :
@@ -527,11 +590,11 @@ def timing_test(option) :
 
     routines = map(lambda s : "main_" + s.strip(), option.routines.split(","))
     (fr, to)   = map(lambda i : int(i), option.nthread_range.split(","))
-    to += 1
+
     for routine in routines :
         f = open_file(option.out, fn_name(routine, tag))
         f.write(time_routine_header())
-        for nthreads in range(fr, to) :
+        for nthreads in get_range(fr, to) :
             args = (option.limit, nthreads, option.repeat)
             l    = repr_tuple("        ")(time_routine(routine,   args))
             f.write(l + "\n")
@@ -587,6 +650,13 @@ def main(argv) :
         else :
             cnt = main_smp(option.limit, option.nthreads)
             print "main_smp : ", cnt , " primes found"
+
+    if option.all or "smp_alt" in routines :
+        if option.time_it :
+            print time_routine("main_smp_alt",   args)
+        else :
+            cnt = main_smp_alt(option.limit, option.nthreads)
+            print "main_smp_alt : ", cnt , " primes found"
 
 
     if option.all or "smp_shared" in routines :
