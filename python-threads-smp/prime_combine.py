@@ -102,6 +102,7 @@ def main_nolocks(top, nthreads) :
     nexti_ns = range(2, lim, 1) 
 
     B = load_balance(nexti_ns, nthreads)
+    print B
 
     map(lambda i : start_th(dowork_th, (i, donelock[i], n, B[i])),
         range(nthreads))
@@ -654,7 +655,6 @@ def main(argv) :
         else :
             cnt = main_smp_alt(option.limit, option.nthreads)
             print "main_smp_alt : ", cnt , " primes found"
-
 
     if option.all or "smp_shared" in routines :
         if option.time_it :
